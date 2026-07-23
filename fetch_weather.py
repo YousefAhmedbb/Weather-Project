@@ -147,23 +147,23 @@ def main():
     file_exists = os.path.isfile(CSV_FILE)
     existing_keys = set()
     if file_exists:
-    try:
-        existing = pd.read_csv(
-            CSV_FILE,
-            usecols=["city", "observation_datetime"]
-        )
-
-        existing_keys = set(
-            zip(
-                existing["city"],
-                existing["observation_datetime"]
+        try:
+            existing = pd.read_csv(
+                CSV_FILE,
+                  usecols=["city", "observation_datetime"]
             )
-        )
 
-        print(f"Loaded {len(existing_keys)} existing records.")
+            existing_keys = set(
+                zip(
+                    existing["city"],
+                    existing["observation_datetime"]
+                )
+            )
 
-    except Exception:
-        pass
+            print(f"Loaded {len(existing_keys)} existing records.")
+
+        except Exception:
+            pass
     
 
     with open(CSV_FILE, "a", newline="", encoding="utf-8") as f:
