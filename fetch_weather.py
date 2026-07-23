@@ -249,7 +249,7 @@ else:
         f"[{i}/{len(cities)}] "
         f"{city}, {cc} ✓ Duplicate skipped"
     )
-                )
+                
 
             except Exception as e:
 
