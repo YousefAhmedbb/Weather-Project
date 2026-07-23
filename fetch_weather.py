@@ -94,7 +94,7 @@ REQUEST_DELAY_SECONDS = 1.1
 
 
 def fetch_city_forecast(city: str) -> list[dict]:
-    url = "https://api.openweathermap.org/data/2.5/forecast"
+    url = "https://api.openweathermap.org/data/2.5/weather"
     params = {"q": city, "appid": API_KEY, "units": "metric"}
 
     response = requests.get(url, params=params, timeout=10)
