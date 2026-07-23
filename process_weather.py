@@ -93,6 +93,27 @@ def print_report(title: str, report: dict) -> None:
         print(f"  {k}: {v}")
 
 
+def drop_uninformative_columns(df: pd.DataFrame, keep: list[str]) -> pd.DataFrame:
+    """
+    Dynamic filtering: drop columns that carry no signal (constant value or
+    entirely null) instead of hardcoding which ones to remove. Columns in
+    `keep` are never dropped, even if they happen to be constant/null in a
+    given run (e.g. a single-city fetch where city is constant).
+    """
+    df = df.copy()
+
+    useless_cols = [
+        col for col in df.columns
+        if col not in keep and df[col].nunique(dropna=True) <= 1
+    ]
+
+    if useless_cols:
+        print(f"Dropping uninformative columns (constant or all-null): {useless_cols}")
+        df = df.drop(columns=useless_cols)
+
+    return df
+
+
 def clean(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
@@ -106,6 +127,12 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
     before = len(df)
     df = df.dropna(subset=["forecast_datetime", "city"])
     print(f"Dropped {before - len(df)} rows missing city/forecast_datetime")
+
+    before = len(df)
+    df = df.sort_values("fetch_timestamp").drop_duplicates(
+        subset=["city", "forecast_datetime"], keep="last"
+    )
+    print(f"Dropped {before - len(df)} duplicate (city, forecast_datetime) rows, kept most recent fetch")
 
     numeric_cols = [
         "temp_c", "feels_like_c", "temp_min_c", "temp_max_c", "pressure",
@@ -130,6 +157,12 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
     for col in ["wind_speed", "wind_gust"]:
         if col in df.columns:
             df[col] = df[col].clip(lower=0)
+    df["visibility"]= df["visibility"].fillna(10000).clip(lower=0)
+
+    df = drop_uninformative_columns(
+        df,
+        keep=["fetch_timestamp", "city", "country", "forecast_datetime"],
+    )
 
     return df
 
@@ -200,4 +233,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-  
