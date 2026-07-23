@@ -16,6 +16,7 @@ import time
 from datetime import datetime, timezone
 
 import requests
+import pandas as pd
 
 API_KEY = os.environ["OWM_API_KEY"]
 REQUEST_DELAY = float(os.environ.get("OWM_REQUEST_DELAY", "1.1"))
@@ -177,7 +178,26 @@ def main():
 
     print(f"Found {len(cities)} capital cities.")
 
-    file_exists = os.path.isfile(CSV_FILE)
+    existing_keys = set()
+
+if file_exists:
+    try:
+        existing = pd.read_csv(
+            CSV_FILE,
+            usecols=["city", "observation_datetime"]
+        )
+
+        existing_keys = set(
+            zip(
+                existing["city"],
+                existing["observation_datetime"]
+            )
+        )
+
+        print(f"Loaded {len(existing_keys)} existing records.")
+
+    except Exception:
+        pass
 
     with open(
         CSV_FILE,
@@ -205,13 +225,30 @@ def main():
             try:
                 row = fetch_city_weather(city, cc)
 
-                writer.writerow(row)
+key = (
+    row["city"],
+    row["observation_datetime"]
+)
 
-                total += 1
+if key not in existing_keys:
 
-                print(
-                    f"[{i}/{len(cities)}] "
-                    f"{city}, {cc} ✓"
+    writer.writerow(row)
+
+    existing_keys.add(key)
+
+    total += 1
+
+    print(
+        f"[{i}/{len(cities)}] "
+        f"{city}, {cc} ✓ Added"
+    )
+
+else:
+
+    print(
+        f"[{i}/{len(cities)}] "
+        f"{city}, {cc} ✓ Duplicate skipped"
+    )
                 )
 
             except Exception as e:
