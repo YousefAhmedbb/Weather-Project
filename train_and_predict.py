@@ -25,7 +25,7 @@ same job (see the workflow file).
 Exit codes:
     0 - success
     1 - unrecoverable problem (input file missing, too few rows to train/
-        evaluate, or a required column is missing)
+        evaluate, or an essential column is missing)
 """
 
 import sys
@@ -61,12 +61,55 @@ TARGET = "target_temp_3h"
 # Minimum rows needed before a train/test split + model fit is meaningful.
 MIN_ROWS_TO_TRAIN = 20
 
+# Columns the pipeline genuinely can't function without -- building the
+# (city, next-reading) target and sorting the forecast timeline both depend
+# on these directly, so there's no sensible default to fall back on.
+ESSENTIAL_COLUMNS = ["forecast_datetime", "temp_c", "city"]
+
+# process_weather.py's drop_uninformative_columns() removes any feature that
+# ends up constant or all-null in a given run's batch (e.g. snow_3h_mm when
+# no tracked city is snowing that cycle). That's the right call upstream --
+# but it means the schema this script sees can legitimately shrink from run
+# to run. These are the neutral fill-ins used to reconstruct a dropped
+# column: the column not existing already meant "no signal", so filling
+# with a constant is equivalent to what the drop was implying.
+NUMERIC_FEATURE_DEFAULTS = {col: 0.0 for col in NUMERIC_FEATURES}
+CATEGORICAL_FEATURE_DEFAULTS = {
+    "city": "unknown",
+    "weather_main": "unknown",
+    "part_of_day": "unknown",
+    "is_raining": False,
+    "is_snowing": False,
+    "is_daytime": True,
+}
+
 
 def load_features(path: Path) -> pd.DataFrame:
     if not path.exists():
         raise FileNotFoundError(f"{path} not found. Run process_weather.py first.")
     df = pd.read_csv(path)
     print(f"Loaded {len(df):,} rows from {path}")
+    return df
+
+
+def reconcile_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Reconstruct any ALL_FEATURES column that process_weather.py dropped as
+    uninformative (constant/all-null) in this run, instead of hard-failing.
+    The model just sees an uninformative constant feature -- exactly what
+    it would have seen if the column had been kept as-is.
+    """
+    df = df.copy()
+    for col in NUMERIC_FEATURES:
+        if col not in df.columns:
+            default = NUMERIC_FEATURE_DEFAULTS[col]
+            print(f"  '{col}' missing (likely dropped upstream as constant/all-null) -> filling with {default}")
+            df[col] = default
+    for col in CATEGORICAL_FEATURES:
+        if col not in df.columns:
+            default = CATEGORICAL_FEATURE_DEFAULTS.get(col, "unknown")
+            print(f"  '{col}' missing (likely dropped upstream as constant/all-null) -> filling with {default!r}")
+            df[col] = default
     return df
 
 
@@ -130,10 +173,15 @@ def main() -> int:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
 
-    missing_cols = [c for c in ALL_FEATURES + ["forecast_datetime", "temp_c"] if c not in df.columns]
-    if missing_cols:
-        print(f"ERROR: weather_data_features.csv is missing required columns: {missing_cols}", file=sys.stderr)
+    missing_essential = [c for c in ESSENTIAL_COLUMNS if c not in df.columns]
+    if missing_essential:
+        print(f"ERROR: weather_data_features.csv is missing essential columns: {missing_essential}", file=sys.stderr)
         return 1
+
+    missing_features = [c for c in ALL_FEATURES if c not in df.columns]
+    if missing_features:
+        print(f"{len(missing_features)} feature column(s) dropped upstream as uninformative -- reconciling:")
+        df = reconcile_features(df)
 
     df_train = build_training_frame(df)
     print(f"{len(df_train):,} rows have a valid target after building (city, next-reading) pairs")
